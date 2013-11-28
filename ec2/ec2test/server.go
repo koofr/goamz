@@ -8,8 +8,8 @@ import (
 	"encoding/base64"
 	"encoding/xml"
 	"fmt"
+	"github.com/koofr/goamz/ec2"
 	"io"
-	"launchpad.net/goamz/ec2"
 	"net"
 	"net/http"
 	"net/url"
@@ -66,7 +66,7 @@ type reservation struct {
 
 // instance holds a simulated ec2 instance
 type Instance struct {
-	seq         int
+	seq int
 	// UserData holds the data that was passed to the RunInstances request
 	// when the instance was started.
 	UserData    []byte
