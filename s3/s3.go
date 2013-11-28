@@ -144,6 +144,26 @@ func (b *Bucket) DelBucket() (err error) {
 	return err
 }
 
+// Info retrieves an object info from an S3 bucket.
+// Failing S3 requests will not be retried
+func (b *Bucket) Info(path string) (key *Key, err error) {
+	req := &request{
+		method: "HEAD",
+		bucket: b.Name,
+		path:   path,
+	}
+	err = b.S3.prepare(req)
+	if err != nil {
+		return nil, err
+	}
+	hresp, err := b.S3.run(req)
+	if err != nil {
+		return nil, err
+	}
+	key = keyFromHeaders(path, hresp.Header)
+	return key, nil
+}
+
 // Get retrieves an object from an S3 bucket.
 //
 // See http://goo.gl/isCO7 for details.
@@ -246,6 +266,18 @@ type Key struct {
 	ETag         string
 	StorageClass string
 	Owner        Owner
+}
+
+func keyFromHeaders(path string, h http.Header) (key *Key) {
+	mtime, _ := time.Parse(time.RFC1123, h.Get("Last-Modified"))
+	size, _ := strconv.ParseInt(h.Get("Content-Length"), 10, 64)
+
+	return &Key{
+		Key:          path,
+		LastModified: mtime.Format("2006-01-02T15:04:05") + ".000Z",
+		Size:         size,
+		ETag:         h.Get("ETag"),
+	}
 }
 
 // List returns information about objects in an S3 bucket.

@@ -193,6 +193,12 @@ func (s *ClientTests) TestBasicFunctionality(c *C) {
 	c.Check(string(data), Equals, "hey!")
 	rc.Close()
 
+	key, err := b.Info("name2")
+	c.Assert(err, IsNil)
+	c.Check(key.Key, Equals, "name2")
+	c.Check(key.Size, Equals, int64(4))
+	c.Check(key.ETag, Equals, `"edebd25a79a1ac52da788eba9a7fcc3a"`)
+
 	data, err = get(b.SignedURL("name2", time.Now().Add(time.Hour)))
 	c.Assert(err, IsNil)
 	c.Assert(string(data), Equals, "hey!")
