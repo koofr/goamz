@@ -98,7 +98,7 @@ func testBucket(s *s3.S3) *s3.Bucket {
 	if len(key) >= 8 {
 		key = s.Auth.AccessKey[:8]
 	}
-	return s.Bucket(fmt.Sprintf("goamz-%s-%s", s.Region.Name, key))
+	return s.Bucket(fmt.Sprintf("goamz-%s-%s-%d", s.Region.Name, key, time.Now().UnixNano()))
 }
 
 var attempts = aws.AttemptStrategy{
