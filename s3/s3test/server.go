@@ -522,7 +522,7 @@ func (objr objectResource) get(a *action) interface{} {
 	// TODO Connection: close ??
 	// TODO x-amz-request-id
 	h.Set("Content-Length", fmt.Sprint(len(obj.data)))
-	h.Set("ETag", hex.EncodeToString(obj.checksum))
+	h.Set("ETag", `"`+hex.EncodeToString(obj.checksum)+`"`)
 	h.Set("Last-Modified", obj.mtime.Format(time.RFC1123))
 	if a.req.Method == "HEAD" {
 		return nil
