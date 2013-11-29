@@ -173,6 +173,10 @@ func (s *ClientTests) TestBasicFunctionality(c *C) {
 	c.Assert(err, IsNil)
 	defer b.Del("name")
 
+	err = b.Put(`file/name !@#$%^&*()_+~-=[]{};':",.<>?`, []byte("yo!"), "text/plain", s3.PublicRead)
+	c.Assert(err, IsNil)
+	defer b.Del(`file/name !@#$%^&*()_+~-=[]{};':",.<>?`)
+
 	data, err := b.Get("name")
 	c.Assert(err, IsNil)
 	c.Assert(string(data), Equals, "yo!")
@@ -251,6 +255,8 @@ func (s *ClientTests) TestBasicFunctionality(c *C) {
 	err = b.Del("name")
 	c.Assert(err, IsNil)
 	err = b.Del("name2")
+	c.Assert(err, IsNil)
+	err = b.Del(`file/name !@#$%^&*()_+~-=[]{};':",.<>?`)
 	c.Assert(err, IsNil)
 
 	err = b.DelBucket()

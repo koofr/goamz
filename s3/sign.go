@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"github.com/koofr/goamz/aws"
 	"log"
+	"net/url"
 	"sort"
 	"strings"
 )
@@ -75,6 +76,9 @@ func sign(auth aws.Auth, method, canonicalPath string, params, headers map[strin
 		date = v[0]
 		params["AWSAccessKeyId"] = []string{auth.AccessKey}
 	}
+
+	u := url.URL{Path: canonicalPath}
+	canonicalPath = u.RequestURI()
 
 	sarray = sarray[0:0]
 	for k, v := range params {

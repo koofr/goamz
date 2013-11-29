@@ -121,12 +121,12 @@ func (s *S) TestSignExampleListAllMyBuckets(c *C) {
 
 func (s *S) TestSignExampleUnicodeKeys(c *C) {
 	method := "GET"
-	path := "/dictionary/fran%C3%A7ais/pr%c3%a9f%c3%a8re"
+	path := "/dictionary/fran\u00e7ais/pr\u00e9f\u00e8re"
 	headers := map[string][]string{
 		"Host": {"s3.amazonaws.com"},
 		"Date": {"Wed, 28 Mar 2007 01:49:49 +0000"},
 	}
 	s3.Sign(testAuth, method, path, nil, headers)
-	expected := "AWS 0PN5J17HBGZHT7JJ3X82:dxhSBHoI6eVSPcXJqEghlUzZMnY="
+	expected := "AWS 0PN5J17HBGZHT7JJ3X82:6fE6lydvV8/IHLXtiMgHXnb55EA="
 	c.Assert(headers["Authorization"], DeepEquals, []string{expected})
 }
