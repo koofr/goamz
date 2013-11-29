@@ -202,6 +202,39 @@ func (b *Bucket) GetReader(path string) (rc io.ReadCloser, err error) {
 	panic("unreachable")
 }
 
+// GetReader retrieves an object info and range from an S3 bucket.
+// ObjectRange parameter can be nil.
+// It is the caller's responsibility to call Close on rc when
+// finished reading.
+func (b *Bucket) GetInfoRangeReader(path string, r *ObjectRange) (key *Key, rc io.ReadCloser, err error) {
+	headers := map[string][]string{}
+	if r != nil {
+		rh := fmt.Sprintf("bytes=%d-%d", r.Start, r.End)
+		headers["Range"] = []string{rh}
+	}
+	req := &request{
+		bucket:  b.Name,
+		path:    path,
+		headers: headers,
+	}
+	err = b.S3.prepare(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	for attempt := attempts.Start(); attempt.Next(); {
+		hresp, err := b.S3.run(req)
+		if shouldRetry(err) && attempt.HasNext() {
+			continue
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		key = keyFromHeaders(path, hresp.Header)
+		return key, hresp.Body, nil
+	}
+	panic("unreachable")
+}
+
 // Put inserts an object into the S3 bucket.
 //
 // See http://goo.gl/FEBPD for details.
@@ -401,6 +434,11 @@ func (b *Bucket) SignedURL(path string, expires time.Time) string {
 	return u.String()
 }
 
+// ObjectRange represents HTTP Range header
+type ObjectRange struct {
+	Start, End uint64
+}
+
 type request struct {
 	method   string
 	bucket   string
@@ -529,7 +567,7 @@ func (s3 *S3) run(req *request) (*http.Response, error) {
 		dump, _ := httputil.DumpResponse(hresp, true)
 		log.Printf("} -> %s\n", dump)
 	}
-	if hresp.StatusCode != 200 && hresp.StatusCode != 204 {
+	if hresp.StatusCode != 200 && hresp.StatusCode != 204 && hresp.StatusCode != 206 {
 		return nil, buildError(hresp)
 	}
 	return hresp, err

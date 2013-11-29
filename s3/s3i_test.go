@@ -199,6 +199,36 @@ func (s *ClientTests) TestBasicFunctionality(c *C) {
 	c.Check(key.Size, Equals, int64(4))
 	c.Check(key.ETag, Equals, `"edebd25a79a1ac52da788eba9a7fcc3a"`)
 
+	if !s.authIsBroken {
+		key, rc, err = b.GetInfoRangeReader("name2", nil)
+		c.Assert(err, IsNil)
+		c.Check(key.Size, Equals, int64(4))
+		data, err = ioutil.ReadAll(rc)
+		c.Check(err, IsNil)
+		c.Check(string(data), Equals, "hey!")
+		rc.Close()
+
+		key, rc, err = b.GetInfoRangeReader("name2", &s3.ObjectRange{0, 0})
+		c.Assert(err, IsNil)
+		c.Check(key.Size, Equals, int64(1))
+		data, err = ioutil.ReadAll(rc)
+		c.Check(err, IsNil)
+		c.Check(string(data), Equals, "h")
+		rc.Close()
+
+		key, rc, err = b.GetInfoRangeReader("name2", &s3.ObjectRange{2, 3})
+		c.Assert(err, IsNil)
+		c.Check(key.Size, Equals, int64(2))
+		data, err = ioutil.ReadAll(rc)
+		c.Check(err, IsNil)
+		c.Check(string(data), Equals, "y!")
+		rc.Close()
+
+		key, rc, err = b.GetInfoRangeReader("name2", &s3.ObjectRange{4, 6})
+		c.Assert(err, NotNil)
+		c.Assert(err.Error(), Equals, "The requested range is not satisfiable")
+	}
+
 	data, err = get(b.SignedURL("name2", time.Now().Add(time.Hour)))
 	c.Assert(err, IsNil)
 	c.Assert(string(data), Equals, "hey!")
