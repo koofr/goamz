@@ -83,6 +83,9 @@ func sign(auth aws.Auth, method, canonicalPath string, params, headers map[strin
 	sarray = sarray[0:0]
 	for k, v := range params {
 		if s3ParamsToSign[k] {
+			if len(v) == 0 {
+				sarray = append(sarray, k)
+			}
 			for _, vi := range v {
 				if vi == "" {
 					sarray = append(sarray, k)

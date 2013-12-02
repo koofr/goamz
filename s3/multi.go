@@ -50,7 +50,7 @@ type listMultiResp struct {
 // See http://goo.gl/ePioY for details.
 func (b *Bucket) ListMulti(prefix, delim string) (multis []*Multi, prefixes []string, err error) {
 	params := map[string][]string{
-		"uploads":     {""},
+		"uploads":     {},
 		"max-uploads": {strconv.FormatInt(int64(listMultiMax), 10)},
 		"prefix":      {prefix},
 		"delimiter":   {delim},
@@ -112,7 +112,7 @@ func (b *Bucket) InitMulti(key string, contType string, perm ACL) (*Multi, error
 		"x-amz-acl":      {string(perm)},
 	}
 	params := map[string][]string{
-		"uploads": {""},
+		"uploads": {},
 	}
 	req := &request{
 		method:  "POST",
