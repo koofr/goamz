@@ -149,6 +149,15 @@ func (m *Multi) PutPart(n int, r io.ReadSeeker) (Part, error) {
 	return m.putPart(n, r, partSize, md5b64)
 }
 
+// PutPartHash sends part n of the multipart upload, reading all the content from r
+// with partSize and MD5 base64 encoded hash.
+// Each part, except for the last one, must be at least 5MB in size.
+//
+// See http://goo.gl/pqZer for details.
+func (m *Multi) PutPartHash(n int, r io.ReadSeeker, partSize int64, md5b64 string) (Part, error) {
+	return m.putPart(n, r, partSize, md5b64)
+}
+
 func (m *Multi) putPart(n int, r io.ReadSeeker, partSize int64, md5b64 string) (Part, error) {
 	headers := map[string][]string{
 		"Content-Length": {strconv.FormatInt(partSize, 10)},
