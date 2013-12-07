@@ -437,7 +437,7 @@ func (b *Bucket) SignedURL(path string, expires time.Time) string {
 
 // ObjectRange represents HTTP Range header
 type ObjectRange struct {
-	Start, End uint64
+	Start, End int64
 }
 
 type request struct {
