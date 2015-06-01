@@ -10,6 +10,7 @@ import (
 	"io"
 	"sort"
 	"strconv"
+	"time"
 )
 
 // Multi represents an unfinished multipart upload.
@@ -20,9 +21,10 @@ import (
 //
 // See http://goo.gl/vJfTG for an overview of multipart uploads.
 type Multi struct {
-	Bucket   *Bucket
-	Key      string
-	UploadId string
+	Bucket    *Bucket
+	Key       string
+	UploadId  string
+	Initiated *time.Time
 }
 
 // That's the default. Here just for testing.
