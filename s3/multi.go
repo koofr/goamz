@@ -1,10 +1,6 @@
 package s3
 
 import (
-	"bytes"
-	"crypto/md5"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"io"
@@ -139,28 +135,12 @@ func (b *Bucket) InitMulti(key string, contType string, perm ACL) (*Multi, error
 	return &Multi{Bucket: b, Key: key, UploadId: resp.UploadId}, nil
 }
 
-// PutPart sends part n of the multipart upload, reading all the content from r.
-// Each part, except for the last one, must be at least 5MB in size.
-//
-// See http://goo.gl/pqZer for details.
-func (m *Multi) PutPart(n int, r io.ReadSeeker) (Part, error) {
-	partSize, _, md5b64, err := seekerInfo(r)
-	if err != nil {
-		return Part{}, err
-	}
-	return m.putPart(n, r, partSize, md5b64)
-}
-
 // PutPartHash sends part n of the multipart upload, reading all the content from r
 // with partSize and MD5 base64 encoded hash.
 // Each part, except for the last one, must be at least 5MB in size.
 //
 // See http://goo.gl/pqZer for details.
-func (m *Multi) PutPartHash(n int, r io.ReadSeeker, partSize int64, md5b64 string) (Part, error) {
-	return m.putPart(n, r, partSize, md5b64)
-}
-
-func (m *Multi) putPart(n int, r io.ReadSeeker, partSize int64, md5b64 string) (Part, error) {
+func (m *Multi) PutPartHash(n int, r io.ReadSeeker, partSize int64, md5b64 string, sha256hex string) (Part, error) {
 	headers := map[string][]string{
 		"Content-Length": {strconv.FormatInt(partSize, 10)},
 		"Content-MD5":    {md5b64},
@@ -180,7 +160,11 @@ func (m *Multi) putPart(n int, r io.ReadSeeker, partSize int64, md5b64 string) (
 			path:    m.Key,
 			headers: headers,
 			params:  params,
-			payload: r,
+			payload: payload{
+				payload:   r,
+				md5b64:    md5b64,
+				sha256hex: sha256hex,
+			},
 		}
 		err = m.Bucket.S3.prepare(req)
 		if err != nil {
@@ -201,22 +185,6 @@ func (m *Multi) putPart(n int, r io.ReadSeeker, partSize int64, md5b64 string) (
 		return Part{n, etag, partSize}, nil
 	}
 	panic("unreachable")
-}
-
-func seekerInfo(r io.ReadSeeker) (size int64, md5hex string, md5b64 string, err error) {
-	_, err = r.Seek(0, 0)
-	if err != nil {
-		return 0, "", "", err
-	}
-	digest := md5.New()
-	size, err = io.Copy(digest, r)
-	if err != nil {
-		return 0, "", "", err
-	}
-	sum := digest.Sum(nil)
-	md5hex = hex.EncodeToString(sum)
-	md5b64 = base64.StdEncoding.EncodeToString(sum)
-	return size, md5hex, md5b64, nil
 }
 
 type Part struct {
@@ -281,60 +249,6 @@ type ReaderAtSeeker interface {
 	io.ReadSeeker
 }
 
-// PutAll sends all of r via a multipart upload with parts no larger
-// than partSize bytes, which must be set to at least 5MB.
-// Parts previously uploaded are either reused if their checksum
-// and size match the new part, or otherwise overwritten with the
-// new content.
-// PutAll returns all the parts of m (reused or not).
-func (m *Multi) PutAll(r ReaderAtSeeker, partSize int64) ([]Part, error) {
-	old, err := m.ListParts()
-	if err != nil && !hasCode(err, "NoSuchUpload") {
-		return nil, err
-	}
-	reuse := 0   // Index of next old part to consider reusing.
-	current := 1 // Part number of latest good part handled.
-	totalSize, err := r.Seek(0, 2)
-	if err != nil {
-		return nil, err
-	}
-	first := true // Must send at least one empty part if the file is empty.
-	var result []Part
-NextSection:
-	for offset := int64(0); offset < totalSize || first; offset += partSize {
-		first = false
-		if offset+partSize > totalSize {
-			partSize = totalSize - offset
-		}
-		section := io.NewSectionReader(r, offset, partSize)
-		_, md5hex, md5b64, err := seekerInfo(section)
-		if err != nil {
-			return nil, err
-		}
-		for reuse < len(old) && old[reuse].N <= current {
-			// Looks like this part was already sent.
-			part := &old[reuse]
-			etag := `"` + md5hex + `"`
-			if part.N == current && part.Size == partSize && part.ETag == etag {
-				// Checksum matches. Reuse the old part.
-				result = append(result, *part)
-				current++
-				continue NextSection
-			}
-			reuse++
-		}
-
-		// Part wasn't found or doesn't match. Send it.
-		part, err := m.putPart(current, section, partSize, md5b64)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, part)
-		current++
-	}
-	return result, nil
-}
-
 type completeUpload struct {
 	XMLName xml.Name      `xml:"CompleteMultipartUpload"`
 	Parts   completeParts `xml:"Part"`
@@ -368,13 +282,17 @@ func (m *Multi) Complete(parts []Part) error {
 	if err != nil {
 		return err
 	}
+	headers := map[string][]string{
+		"Content-Length": {strconv.FormatInt(int64(len(data)), 10)},
+	}
 	for attempt := attempts.Start(); attempt.Next(); {
 		req := &request{
 			method:  "POST",
 			bucket:  m.Bucket.Name,
 			path:    m.Key,
+			headers: headers,
 			params:  params,
-			payload: bytes.NewReader(data),
+			payload: getPayload(data),
 		}
 		err := m.Bucket.S3.query(req, nil)
 		if shouldRetry(err) && attempt.HasNext() {

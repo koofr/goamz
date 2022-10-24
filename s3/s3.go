@@ -14,7 +14,6 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
-	"github.com/koofr/goamz/aws"
 	"io"
 	"io/ioutil"
 	"log"
@@ -26,6 +25,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/koofr/goamz/aws"
 )
 
 const debug = false
@@ -82,20 +83,20 @@ func (s3 *S3) Bucket(name string) *Bucket {
 	return &Bucket{s3, name}
 }
 
-var createBucketConfiguration = `<CreateBucketConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"> 
-  <LocationConstraint>%s</LocationConstraint> 
+var createBucketConfiguration = `<CreateBucketConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <LocationConstraint>%s</LocationConstraint>
 </CreateBucketConfiguration>`
 
 // locationConstraint returns an io.Reader specifying a LocationConstraint if
 // required for the region.
 //
 // See http://goo.gl/bh9Kq for details.
-func (s3 *S3) locationConstraint() io.Reader {
+func (s3 *S3) locationConstraint() payload {
 	constraint := ""
 	if s3.Region.S3LocationConstraint {
 		constraint = fmt.Sprintf(createBucketConfiguration, s3.Region.Name)
 	}
-	return strings.NewReader(constraint)
+	return getPayload([]byte(constraint))
 }
 
 type ACL string
@@ -241,12 +242,14 @@ func (b *Bucket) GetInfoRangeReader(path string, r *ObjectRange) (key *Key, rc i
 // See http://goo.gl/FEBPD for details.
 func (b *Bucket) Put(path string, data []byte, contType string, perm ACL) error {
 	body := bytes.NewBuffer(data)
-	return b.PutReader(path, body, int64(len(data)), contType, perm)
+	md5b64 := MD5B64(data)
+	sha256hex := SHA256Hex(data)
+	return b.PutReader(path, body, int64(len(data)), contType, perm, md5b64, sha256hex)
 }
 
 // PutReader inserts an object into the S3 bucket by consuming data
 // from r until EOF.
-func (b *Bucket) PutReader(path string, r io.Reader, length int64, contType string, perm ACL) error {
+func (b *Bucket) PutReader(path string, r io.Reader, length int64, contType string, perm ACL, md5b64 string, sha256hex string) error {
 	headers := map[string][]string{
 		"Content-Length": {strconv.FormatInt(length, 10)},
 		"Content-Type":   {contType},
@@ -257,7 +260,11 @@ func (b *Bucket) PutReader(path string, r io.Reader, length int64, contType stri
 		bucket:  b.Name,
 		path:    path,
 		headers: headers,
-		payload: r,
+		payload: payload{
+			payload:   r,
+			md5b64:    md5b64,
+			sha256hex: sha256hex,
+		},
 	}
 	return b.S3.query(req, nil)
 }
@@ -440,6 +447,20 @@ type ObjectRange struct {
 	Start, End int64
 }
 
+type payload struct {
+	payload   io.Reader
+	md5b64    string
+	sha256hex string
+}
+
+func getPayload(b []byte) payload {
+	return payload{
+		payload:   bytes.NewReader(b),
+		md5b64:    MD5B64(b),
+		sha256hex: SHA256Hex(b),
+	}
+}
+
 type request struct {
 	method   string
 	bucket   string
@@ -448,7 +469,7 @@ type request struct {
 	params   url.Values
 	headers  http.Header
 	baseurl  string
-	payload  io.Reader
+	payload  payload
 	prepared bool
 }
 
@@ -556,7 +577,7 @@ func (s3 *S3) prepare(req *request) error {
 	}
 	req.headers["Host"] = []string{u.Host}
 	req.headers["Date"] = []string{time.Now().In(time.UTC).Format(time.RFC1123)}
-	sign(s3.Auth, req.method, req.signpath, req.params, req.headers)
+
 	return nil
 }
 
@@ -580,12 +601,24 @@ func (s3 *S3) run(req *request) (*http.Response, error) {
 		Header:     req.headers,
 	}
 
+	hreq.Host = hreq.URL.Host
+
+	if s3.Region.S3V4Signature {
+		signer := NewV4Signer(s3.Auth, "s3", s3.Region)
+		err = signer.Sign(&hreq, req.payload.sha256hex)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		Sign(s3.Auth, req.method, req.signpath, req.params, req.headers)
+	}
+
 	if v, ok := req.headers["Content-Length"]; ok {
 		hreq.ContentLength, _ = strconv.ParseInt(v[0], 10, 64)
 		delete(req.headers, "Content-Length")
 	}
-	if req.payload != nil {
-		hreq.Body = ioutil.NopCloser(req.payload)
+	if req.payload.payload != nil {
+		hreq.Body = ioutil.NopCloser(req.payload.payload)
 	}
 
 	hresp, err := http.DefaultClient.Do(&hreq)

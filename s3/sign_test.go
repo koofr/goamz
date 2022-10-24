@@ -1,9 +1,10 @@
 package s3_test
 
 import (
+	. "gopkg.in/check.v1"
+
 	"github.com/koofr/goamz/aws"
 	"github.com/koofr/goamz/s3"
-	. "launchpad.net/gocheck"
 )
 
 // S3 ReST authentication docs: http://goo.gl/G1LrK

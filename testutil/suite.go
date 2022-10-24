@@ -2,8 +2,10 @@ package testutil
 
 import (
 	"flag"
+
+	. "gopkg.in/check.v1"
+
 	"github.com/koofr/goamz/aws"
-	. "launchpad.net/gocheck"
 )
 
 // Amazon must be used by all tested packages to determine whether to

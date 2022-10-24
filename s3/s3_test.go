@@ -5,12 +5,13 @@ import (
 	"io/ioutil"
 	"net/http"
 	"testing"
+	"time"
+
+	. "gopkg.in/check.v1"
 
 	"github.com/koofr/goamz/aws"
 	"github.com/koofr/goamz/s3"
 	"github.com/koofr/goamz/testutil"
-	. "launchpad.net/gocheck"
-	"time"
 )
 
 func Test(t *testing.T) {
@@ -177,8 +178,16 @@ func (s *S) TestPutReader(c *C) {
 	testServer.Response(200, nil, "")
 
 	b := s.s3.Bucket("bucket")
-	buf := bytes.NewBufferString("content")
-	err := b.PutReader("name", buf, int64(buf.Len()), "content-type", s3.Private)
+	payload := []byte("content")
+	err := b.PutReader(
+		"name",
+		bytes.NewReader(payload),
+		int64(len(payload)),
+		"content-type",
+		s3.Private,
+		s3.MD5B64(payload),
+		s3.SHA256Hex(payload),
+	)
 	c.Assert(err, IsNil)
 
 	req := testServer.WaitRequest()

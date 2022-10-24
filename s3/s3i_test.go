@@ -5,16 +5,17 @@ import (
 	"crypto/md5"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
+	"sort"
 	"strings"
+	"time"
+
+	. "gopkg.in/check.v1"
 
 	"github.com/koofr/goamz/aws"
 	"github.com/koofr/goamz/s3"
 	"github.com/koofr/goamz/testutil"
-	. "launchpad.net/gocheck"
-	"net"
-	"sort"
-	"time"
 )
 
 // AmazonServer represents an Amazon S3 server.
@@ -185,8 +186,16 @@ func (s *ClientTests) TestBasicFunctionality(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(string(data), Equals, "yo!")
 
-	buf := bytes.NewBufferString("hey!")
-	err = b.PutReader("name2", buf, int64(buf.Len()), "text/plain", s3.Private)
+	payload := []byte("hey!")
+	err = b.PutReader(
+		"name2",
+		bytes.NewReader(payload),
+		int64(len(payload)),
+		"text/plain",
+		s3.Private,
+		s3.MD5B64(payload),
+		s3.SHA256Hex(payload),
+	)
 	c.Assert(err, IsNil)
 	defer b.Del("name2")
 
@@ -460,7 +469,14 @@ func (s *ClientTests) TestMultiInitPutList(c *C) {
 	var sent []s3.Part
 
 	for i := 0; i < 5; i++ {
-		p, err := multi.PutPart(i+1, strings.NewReader(fmt.Sprintf("<part %d>", i+1)))
+		payload := []byte(fmt.Sprintf("<part %d>", i+1))
+		p, err := multi.PutPartHash(
+			i+1,
+			bytes.NewReader(payload),
+			int64(len(payload)),
+			s3.MD5B64(payload),
+			s3.SHA256Hex(payload),
+		)
 		c.Assert(err, IsNil)
 		c.Assert(p.N, Equals, i+1)
 		c.Assert(p.Size, Equals, int64(8))
@@ -508,9 +524,21 @@ func (s *ClientTests) TestMultiComplete(c *C) {
 	data1 := make([]byte, 5*1024*1024)
 	data2 := []byte("<part 2>")
 
-	part1, err := multi.PutPart(1, bytes.NewReader(data1))
+	part1, err := multi.PutPartHash(
+		1,
+		bytes.NewReader(data1),
+		int64(len(data1)),
+		s3.MD5B64(data1),
+		s3.SHA256Hex(data1),
+	)
 	c.Assert(err, IsNil)
-	part2, err := multi.PutPart(2, bytes.NewReader(data2))
+	part2, err := multi.PutPartHash(
+		1,
+		bytes.NewReader(data2),
+		int64(len(data2)),
+		s3.MD5B64(data2),
+		s3.SHA256Hex(data2),
+	)
 	c.Assert(err, IsNil)
 
 	// Purposefully reversed. The order requirement must be handled.
@@ -523,7 +551,7 @@ func (s *ClientTests) TestMultiComplete(c *C) {
 	c.Assert(len(data), Equals, len(data1)+len(data2))
 	for i := range data1 {
 		if data[i] != data1[i] {
-			c.Fatalf("uploaded object at byte %d: want %d, got %d", data1[i], data[i])
+			c.Fatalf("uploaded object at byte %d: want %d, got %d", i, data1[i], data[i])
 		}
 	}
 	c.Assert(string(data[len(data1):]), Equals, string(data2))
@@ -608,25 +636,4 @@ func (s *ClientTests) TestListMulti(c *C) {
 	c.Assert(multis[1].Bucket, Equals, b)
 	c.Assert(multis[1].Key, Equals, "a/multi3")
 	c.Assert(multis[1].UploadId, Matches, ".+")
-}
-
-func (s *ClientTests) TestMultiPutAllZeroLength(c *C) {
-	b := testBucket(s.s3)
-	err := b.PutBucket(s3.Private)
-	c.Assert(err, IsNil)
-
-	multi, err := b.InitMulti("multi", "text/plain", s3.Private)
-	c.Assert(err, IsNil)
-	defer multi.Abort()
-
-	// This tests an edge case. Amazon requires at least one
-	// part for multiprat uploads to work, even the part is empty.
-	parts, err := multi.PutAll(strings.NewReader(""), 5*1024*1024)
-	c.Assert(err, IsNil)
-	c.Assert(parts, HasLen, 1)
-	c.Assert(parts[0].Size, Equals, int64(0))
-	c.Assert(parts[0].ETag, Equals, `"d41d8cd98f00b204e9800998ecf8427e"`)
-
-	err = multi.Complete(parts)
-	c.Assert(err, IsNil)
 }
